@@ -1,5 +1,8 @@
 Revision history for Perl extension Class::SelfMethods.
 
+1.08  Tue Sep 16 2003
+  - Release to point people at Class::Prototyped
+
 1.07  Tue Feb  8 16:55:00 2000
         - fixed bug in Makefile.pl
 

@@ -2,18 +2,16 @@
 #
 # Class::SelfMethods - a Module for supporting instance-defined methods
 #
-# Author: Toby Everett
-# Revision: 1.07
-# Last Change: Fixed bug in Makefile.pl
+# Author: Toby Ovod-Everett
+# Last Change: Update POD to mention Class::Prototyped
 ##############################################################################
-# Copyright 1999 Toby Everett, 1999 Damian Conway.  All rights reserved.
+# Copyright 1999, 2003 Toby Ovod-Everett, 1999 Damian Conway.  All rights reserved.
 #
-# This file is distributed under the Artistic License. See
-# http://www.ActiveState.com/corporate/artistic_license.htm or
-# the license that comes with your perl distribution.
+# This program is free software; you can redistribute it and/or modify it
+# under the same terms as Perl itself.
 #
 # For comments, questions, bugs or general interest, feel free to
-# contact Toby Everett at teverett@alascom.att.com
+# contact Toby Ovod-Everett at tovod-everett@alascom.att.com
 #
 # Damian Conway, damian@cs.monash.edu.au, was responsible for the _SET
 # accessor code and the symbol table manipulation code.
@@ -24,7 +22,7 @@ package Class::SelfMethods;
 use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
 
-$VERSION = '1.07';
+$VERSION = '1.08';
 
 use Carp;
 
@@ -34,7 +32,7 @@ sub AUTOLOAD {
     my $method = can($_[0], $func);
     goto &$method if $method;
   }
-  croak sprintf q{Can't locate object method "%s" via package "%s"}, $func, ref($_[0]);
+  croak sprintf 'Can\'t locate object method "%s" via package "%s"', $func, ref($_[0]);
 }
 
 sub can {
@@ -151,6 +149,11 @@ Class::SelfMethods - a Module for supporting instance-defined methods
 
 
 =head1 DESCRIPTION
+
+Development of this module has largely lapsed due to the superior performance 
+and feature set of C<Class::Prototyped>.  If you haven't written code that 
+depends upon C<Class::SelfMethods>, I strongly urge you to look at 
+C<Class::Prototyped> first.
 
 C<Class::SelfMethods> merges some features of other Object Oriented languages to build a
 system for implementing more flexible objects than is provided by default in Perl.
@@ -305,7 +308,7 @@ the value is dereferenced to an array and passed as parameters.
 
 =head1 AUTHOR
 
-Toby Everett, teverett@alascom.att.com
+Toby Ovod-Everett, tovod-everett@alascom.att.com
 
 =head1 CREDITS
 
