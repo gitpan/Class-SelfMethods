@@ -6,7 +6,7 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..4\n"; }
+BEGIN { $| = 1; print "1..21\n"; }
 END {print "not ok 1\n" unless $loaded;}
 use Class::SelfMethods;
 $loaded = 1;
@@ -78,3 +78,43 @@ $bas->name_SET("ok 10");
 $bas->friendly_CLEAR;
 print $bas->friendly, "\n";
 
+#TEST 11
+my $foo_SET = $bas->can('foo_SET');
+print $foo_SET ? "ok 11\n" : "not ok 11\n";
+
+#TEST 12
+$bas->$foo_SET("ok 12\n");
+print $bas->foo ? $bas->foo : "not ok 12\n";
+
+#TEST 13
+print $bas->can('foo') ? "ok 13\n" : "not ok 13\n";
+
+#TEST 14
+my $foo_CLEAR = $bas->can('foo_CLEAR');
+print $foo_CLEAR ? "ok 14\n" : "not ok 14\n";
+
+#TEST 15
+print $bas->can('foo') ? "ok 15\n" : "not ok 15\n";
+
+#TEST 16
+$bas->$foo_CLEAR();
+print $bas->can('foo') ? "not ok 16\n" : "ok 16\n";
+
+#TEST 17
+print !eval { $bas->foo }
+  && $@ =~ /Can't locate object method "foo" via package "MyClass"/ ? "ok 17\n" : "not ok 17\n";
+
+#TEST 18
+my $friendly = $foo->can('friendly');
+print $friendly ? "ok 18\n" : "not ok 18\n";
+
+#TEST 19
+$foo->name_SET("ok 19\n");
+print $foo->$friendly() ? $foo->$friendly() : "not ok 19\n";
+
+#TEST 20
+print $foo->can('nonexistent') ? "not ok 20\n" : "ok 20\n";
+
+#TEST 21
+print !eval { $foo->nonexistent }
+  && $@ =~ /Can't locate object method "nonexistent" via package "MyClass"/ ? "ok 21\n" : "not ok 21\n";

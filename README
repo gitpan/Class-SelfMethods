@@ -140,34 +140,74 @@ HOW TO
     For instance, in the `SYNOPSIS' I use `$foo->friendly_SET' to
     specify both a value and a method for `friendly'. Method calls
     that end in a `_CLEAR' will delete that attribute/method from
-    the object.
+    the object. The `can' method will behave just like
+    `UNIVERSAL::can' - it returns a code reference that will
+    interoperate with the associated object properly using the
+    `$obj->$coderef()' syntax. For examples of usage, see `test.pl'.
 
   Installation instructions
 
     Standard module installation procedure.
 
 INTERNALS
+  can
+
+    This implementation of `can' is the heart of the system. By
+    making `can' responsible for almost everything relating to
+    accessing the objects, the code for deciding how to respond to
+    the various situtations is kept in one place.
+
+    In order to get major speed improvements (a factor of 2 to 3 for
+    attribute retrieval and method calls), extensive symbol table
+    manipulation was used to build methods on the fly that react
+    appropriately.
+
+    The three types of methods are `_SET' methods, `_CLEAR' methods,
+    and "normal" methods. The first two are fairly straight forward
+    as far as implementation goes. First `UNIVERSAL::can' is called
+    to determine whether an appropriate entry has been made in the
+    package symbol table. If not, an anonymous subroutine (actually,
+    a closure in this case because `$func' is a lexically scoped
+    variable defined outside the anonymous subroutine and referenced
+    from within) is created and assigned into the package symbol
+    table. In either case, a reference to the appropriate closure is
+    returned (normal `can' behavior is to return a reference to the
+    code or `undef' if the method call is not legal).
+
+    The "normal" methods are somewhat trickier. The outer `if'
+    statement exists to ensure that `can' returns `undef' for
+    illegal method calls (remember that there may be situations
+    where `$self->can($func)' should return false even though
+    `UNIVERSAL::can($self, $func)' returns true). It then checks
+    whether an appropriate entry has been made in the package symbol
+    table. If not, it builds a closure that will do the trick.
+    Remember that the closure could get called on an object that is
+    in any of the four possible states - attribute, instance method,
+    inherited method, or illegal. The closure includes the logic to
+    test for instance methods and attributes, but if neither are
+    present it will make the call to `_method' regardless of whether
+    or not there is an inherited method with the proper name. It
+    relies on `AUTOLOAD' to properly deal with unhandled `_method'
+    calls.
+
   AUTOLOAD
 
-    This is the heart of the system. Every method call passes
-    through `AUTOLOAD' because the method is called without the
-    leading underscore, but is defined in the class hierarchy with
-    the leading underscore.
+    `AUTOLOAD' gets called the first time a given method call is
+    made. It first strips off the package name from the function
+    call to extract the actual function name. It then checks to see
+    if the function name starts with an underscore. If it does, it's
+    a failed call from the "normal" method closure, so `AUTOLOAD'
+    calls `croak' to die with the appropriate error message. Notice
+    that the underscore has been stripped off, so it will `die'
+    failing to find `method'.
 
-    `AUTOLOAD' starts by stripping off the module name from
-    `$AUTOLOAD'. It checks first for `_SET' and `_CLEAR' method
-    calls and does the right thing in those situations. If it's a
-    normal method call, it then searches for an entry in `$self''s
-    hash with that name. If it finds one and it is not a `CODE'
-    reference, it returns the value. If it is a `CODE' reference, it
-    calls the subroutine passing it `$self' and whatever parameters
-    `AUTOLOAD' was originally passed. If it doesn't find an entry in
-    the hash, it prepends an underscore to the method name and uses
-    `can' to test whether the object is capable of handling the
-    method call. If it is, `AUTOLOAD' calls the method (with the
-    leading underscore) and passes it whatever parameters `AUTOLOAD'
-    was originally passed. If not, it returns silently (this is
-    designed to mimic a non-existent hash entry).
+    `AUTOLOAD' then calls `can', which will return a reference to
+    the appropriate `CODE' entity if the method call is supported.
+    At the same time, `can' puts an entry into the symbol table for
+    `Class::SelfMethods' to support future calls to that method.
+    `AUTOLOAD' jumps to that `CODE' entity if a valid entity was
+    return. Otherwise, execution continues on to another `croak'
+    call.
 
   new
 
@@ -187,6 +227,27 @@ AUTHOR
 CREDITS
     Damian Conway, damian@cs.monash.edu.au
         Responsible for accessor methods, module name, constructive
-        criticism and moral support. He also wrote an excellent
-        book, Object Oriented Perl, that is a must read.
+        criticism and moral support. After I responded to Sean's
+        suggestion of implementing a `can' method, Damian completely
+        rewrote my first attempt by routing everything through
+        `can'. He also was the first to point out direct symbol
+        table manipulation by implementing it for the `_SET' and
+        `_CLEAR' methods. I rebutted his routing everything through
+        `can' by doing performance testing. He agreed that the
+        performance issues were a problem, but suggested retaining
+        the direct symbol table for the accessor methods. It was
+        then that the lightbulb went off and I realized that a
+        properly written closure could be used for the normal method
+        calls. Damian's criticisms kept me on track and from making
+        a fool of myself, and the result is some very fast (and I
+        hope safe:) code.
+
+        I first started writing to Damian as a result of an
+        excellent book he wrote, Object Oriented Perl. I highly
+        recommend it - get it, read it.
+
+    Sean M. Burke, sburke@netadventure.net
+        Suggested implementing a `can' method. Sean was/is
+        responsible for `Class::Classless'. If you need a full-
+        featured purely prototype based object system, check it out.
 

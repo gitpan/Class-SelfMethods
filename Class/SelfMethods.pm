@@ -3,8 +3,8 @@
 # Class::SelfMethods - a Module for supporting instance-defined methods
 #
 # Author: Toby Everett
-# Revision: 1.0
-# Last Change: Released
+# Revision: 1.0.6
+# Last Change: Added can and package manipulation optimization
 ##############################################################################
 # Copyright 1999 Toby Everett, 1999 Damian Conway.  All rights reserved.
 #
@@ -16,7 +16,7 @@
 # contact Toby Everett at teverett@alascom.att.com
 #
 # Damian Conway, damian@cs.monash.edu.au, was responsible for the _SET
-# accessor code.
+# accessor code and the symbol table manipulation code.
 ##############################################################################
 
 package Class::SelfMethods;
@@ -24,29 +24,61 @@ package Class::SelfMethods;
 use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
 
-$VERSION = '1.01';
+$VERSION = '1.06';
 
+use Carp;
 
 sub AUTOLOAD {
-  my $self = shift;
-  my(@params) = @_;
-
-  (my $func = $AUTOLOAD) =~ s/^.*:://;
-
-  $func =~ s/_SET$// and return $self->{$func} = $params[0];
-  $func =~ s/_CLEAR$// and return delete $self->{$func};
-
-  if (exists $self->{$func}) {
-    if (ref ($self->{$func}) eq 'CODE') {
-      return $self->{$func}->($self, @params);
-    } else {
-      return $self->{$func};
-    }
-  } else {
-    my $undercall = "_$func";
-    $self->can($undercall) and return $self->$undercall(@params);
-    return;
+  (my $func = $AUTOLOAD) =~ s/^.*::(_?)//;
+  unless ($1) {
+    my $method = can($_[0], $func);
+    goto &$method if $method;
   }
+  croak sprintf q{Can't locate object method "%s" via package "%s"}, $func, ref($_[0]);
+}
+
+sub can {
+  my($self, $func) = @_;
+
+  if ($func =~ s/_SET$//) {
+    my $method = UNIVERSAL::can($self, "${func}_SET");
+    unless ($method) {
+      no strict;
+      *{"${func}_SET"} = $method = sub { $_[0]->{$func} = $_[1] };
+    }
+    return $method;
+  }
+
+  if ($func =~ s/_CLEAR$//) {
+    my $method = UNIVERSAL::can($self, "${func}_CLEAR");
+    unless ($method) {
+      no strict;
+      *{"${func}_CLEAR"} = $method = sub { delete $_[0]->{$func} };
+    }
+    return $method;
+  }
+
+  my $undercall = "_$func";
+  if (exists $self->{$func} or UNIVERSAL::can($self, $undercall)) {
+    my $method = UNIVERSAL::can($self, $func);
+    unless ($method) {
+      no strict;
+      *{$func} = $method = sub {
+          if (exists $_[0]->{$func}) {
+            if (ref ($_[0]->{$func}) eq 'CODE') {
+              goto &{$_[0]->{$func}};
+            } else {
+              return $_[0]->{$func};
+            }
+          } else {
+            my $self = shift;
+            return $self->$undercall(@_);
+          }
+        };
+    }
+    return $method;
+  }
+  return;
 }
 
 sub new {
@@ -209,7 +241,9 @@ interchangeable.
 Method calls that end in a C<_SET> will result in their first parameter being assigned to the
 appropriate attribute/method.  For instance, in the C<SYNOPSIS> I use C<$foo-E<gt>friendly_SET> to
 specify both a value and a method for C<friendly>.  Method calls that end in a C<_CLEAR> will
-delete that attribute/method from the object.
+delete that attribute/method from the object.  The C<can> method will behave just like
+C<UNIVERSAL::can> - it returns a code reference that will interoperate with the associated object
+properly using the C<$obj-E<gt>$coderef()> syntax.  For examples of usage, see C<test.pl>.
 
 =head2 Installation instructions
 
@@ -217,21 +251,48 @@ Standard module installation procedure.
 
 =head1 INTERNALS
 
+=head2 can
+
+This implementation of C<can> is the heart of the system.  By making C<can> responsible for almost
+everything relating to accessing the objects, the code for deciding how to respond to the various
+situtations is kept in one place.
+
+In order to get major speed improvements (a factor of 2 to 3 for attribute retrieval and method
+calls), extensive symbol table manipulation was used to build methods on the fly that react
+appropriately.
+
+The three types of methods are C<_SET> methods, C<_CLEAR> methods, and "normal" methods.  The
+first two are fairly straight forward as far as implementation goes.  First C<UNIVERSAL::can> is
+called to determine whether an appropriate entry has been made in the package symbol table.  If
+not, an anonymous subroutine (actually, a closure in this case because C<$func> is a lexically
+scoped variable defined outside the anonymous subroutine and referenced from within) is created
+and assigned into the package symbol table.  In either case, a reference to the appropriate
+closure is returned (normal C<can> behavior is to return a reference to the code or C<undef> if
+the method call is not legal).
+
+The "normal" methods are somewhat trickier.  The outer C<if> statement exists to ensure that
+C<can> returns C<undef> for illegal method calls (remember that there may be situations where
+C<$self-E<gt>can($func)> should return false even though C<UNIVERSAL::can($self, $func)> returns
+true). It then checks whether an appropriate entry has been made in the package symbol table.  If
+not, it builds a closure that will do the trick.  Remember that the closure could get called on an
+object that is in any of the four possible states - attribute, instance method, inherited method,
+or illegal.  The closure includes the logic to test for instance methods and attributes, but if
+neither are present it will make the call to C<_method> regardless of whether or not there is an
+inherited method with the proper name.  It relies on C<AUTOLOAD> to properly deal with unhandled
+C<_method> calls.
+
 =head2 AUTOLOAD
 
-This is the heart of the system.  Every method call passes through C<AUTOLOAD> because the method
-is called without the leading underscore, but is defined in the class hierarchy with the leading
-underscore.
+C<AUTOLOAD> gets called the first time a given method call is made.  It first strips off the
+package name from the function call to extract the actual function name.  It then checks to see
+if the function name starts with an underscore.  If it does, it's a failed call from the "normal"
+method closure, so C<AUTOLOAD> calls C<croak> to die with the appropriate error message.  Notice
+that the underscore has been stripped off, so it will C<die> failing to find C<method>.
 
-C<AUTOLOAD> starts by stripping off the module name from C<$AUTOLOAD>.  It checks first for
-C<_SET> and C<_CLEAR> method calls and does the right thing in those situations.  If it's a normal
-method call, it then searches for an entry in C<$self>'s hash with that name.  If it finds one and
-it is not a C<CODE> reference, it returns the value.  If it is a C<CODE> reference, it calls the
-subroutine passing it C<$self> and whatever parameters C<AUTOLOAD> was originally passed.  If it
-doesn't find an entry in the hash, it prepends an underscore to the method name and uses C<can> to
-test whether the object is capable of handling the method call.  If it is, C<AUTOLOAD> calls the
-method (with the leading underscore) and passes it whatever parameters C<AUTOLOAD> was originally
-passed.  If not, it returns silently (this is designed to mimic a non-existent hash entry).
+C<AUTOLOAD> then calls C<can>, which will return a reference to the appropriate C<CODE> entity if
+the method call is supported.  At the same time, C<can> puts an entry into the symbol table for
+C<Class::SelfMethods> to support future calls to that method.  C<AUTOLOAD> jumps to that C<CODE>
+entity if a valid entity was return.  Otherwise, execution continues on to another C<croak> call.
 
 =head2 new
 
@@ -252,8 +313,23 @@ Toby Everett, teverett@alascom.att.com
 
 =item Damian Conway, damian@cs.monash.edu.au
 
-Responsible for accessor methods, module name, constructive criticism and moral support.  He also
-wrote an excellent book, Object Oriented Perl, that is a must read.
+Responsible for accessor methods, module name, constructive criticism and moral support.  After I
+responded to Sean's suggestion of implementing a C<can> method, Damian completely rewrote my first
+attempt by routing everything through C<can>. He also was the first to point out direct symbol
+table manipulation by implementing it for the C<_SET> and C<_CLEAR> methods.  I rebutted his
+routing everything through C<can> by doing performance testing.  He agreed that the performance
+issues were a problem, but suggested retaining the direct symbol table for the accessor methods.
+It was then that the lightbulb went off and I realized that a properly written closure could be
+used for the normal method calls. Damian's criticisms kept me on track and from making a fool of
+myself, and the result is some very fast (and I hope safe:) code.
+
+I first started writing to Damian as a result of an excellent book he wrote, Object Oriented Perl.
+I highly recommend it - get it, read it.
+
+=item Sean M. Burke, sburke@netadventure.net
+
+Suggested implementing a C<can> method.  Sean was/is responsible for C<Class::Classless>.  If
+you need a full-featured purely prototype based object system, check it out.
 
 =back
 
