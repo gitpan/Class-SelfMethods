@@ -3,8 +3,8 @@
 # Class::SelfMethods - a Module for supporting instance-defined methods
 #
 # Author: Toby Everett
-# Revision: 1.0.6
-# Last Change: Added can and package manipulation optimization
+# Revision: 1.07
+# Last Change: Fixed bug in Makefile.pl
 ##############################################################################
 # Copyright 1999 Toby Everett, 1999 Damian Conway.  All rights reserved.
 #
@@ -24,7 +24,7 @@ package Class::SelfMethods;
 use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
 
-$VERSION = '1.06';
+$VERSION = '1.07';
 
 use Carp;
 

@@ -1,5 +1,8 @@
 Revision history for Perl extension Class::SelfMethods.
 
+1.07  Tue Feb  8 16:55:00 2000
+        - fixed bug in Makefile.pl
+
 1.06  Mon Sep 20 19:20:00 1999
         - optimized closure for inherited method calls that respects
           inheritance tree modifications
